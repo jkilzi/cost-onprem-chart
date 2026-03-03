@@ -41,7 +41,6 @@ KAFKA_NAMESPACE=${KAFKA_NAMESPACE:-kafka}
 KAFKA_CLUSTER_NAME=${KAFKA_CLUSTER_NAME:-cost-onprem-kafka}
 KAFKA_VERSION=${KAFKA_VERSION:-4.1.0}
 AMQ_STREAMS_CHANNEL=${AMQ_STREAMS_CHANNEL:-amq-streams-3.1.x}
-KAFKA_ENVIRONMENT=${KAFKA_ENVIRONMENT:-dev}  # "dev" or "ocp"
 STORAGE_CLASS=${STORAGE_CLASS:-}  # Auto-detect if empty
 
 # Advanced options
@@ -109,9 +108,6 @@ detect_platform() {
             else
                 echo_warning "No default storage class found. Storage class must be explicitly set."
             fi
-        fi
-        if [ "$KAFKA_ENVIRONMENT" = "dev" ]; then
-            KAFKA_ENVIRONMENT="ocp"
         fi
     else
         echo_error "OpenShift platform not detected. This chart requires OpenShift."
@@ -402,26 +398,12 @@ deploy_kafka_cluster() {
         return 0
     fi
 
-    # Set environment-specific configuration
-    local broker_replicas=1
-    local broker_storage_size="10Gi"
-    local controller_replicas=1
-    local controller_storage_size="5Gi"
-    local storage_class=""
-    local tls_enabled="false"
-
-    case "$KAFKA_ENVIRONMENT" in
-        "ocp"|"openshift")
-            broker_replicas=3
-            broker_storage_size="100Gi"
-            controller_replicas=3
-            controller_storage_size="20Gi"
-            storage_class="$STORAGE_CLASS"
-            tls_enabled="true"
-            ;;
-        "dev"|"development")
-            ;;
-    esac
+    local broker_replicas=${KAFKA_BROKER_REPLICAS:-3}
+    local broker_storage_size=${KAFKA_BROKER_STORAGE:-100Gi}
+    local controller_replicas=${KAFKA_CONTROLLER_REPLICAS:-3}
+    local controller_storage_size=${KAFKA_CONTROLLER_STORAGE:-20Gi}
+    local storage_class="$STORAGE_CLASS"
+    local tls_enabled="true"
 
     echo_info "Creating KRaft Kafka cluster with configuration:"
     echo_info "  Name: $KAFKA_CLUSTER_NAME"
@@ -570,10 +552,7 @@ EOF
 create_kafka_topics() {
     echo_header "CREATING KAFKA TOPICS"
 
-    local replication_factor=1
-    if [ "$KAFKA_ENVIRONMENT" = "ocp" ] || [ "$KAFKA_ENVIRONMENT" = "openshift" ]; then
-        replication_factor=3
-    fi
+    local replication_factor="${KAFKA_BROKER_REPLICAS:-3}"
 
     echo_info "Creating Kafka topics with replication factor: $replication_factor"
 
@@ -911,7 +890,6 @@ main() {
     echo_info "  Cluster Name: $KAFKA_CLUSTER_NAME"
     echo_info "  Kafka Version: $KAFKA_VERSION"
     echo_info "  AMQ Streams Channel: $AMQ_STREAMS_CHANNEL"
-    echo_info "  Environment: $KAFKA_ENVIRONMENT"
     if [ -n "$STORAGE_CLASS" ]; then
         echo_info "  Storage Class: $STORAGE_CLASS"
     fi
@@ -959,15 +937,18 @@ case "${1:-}" in
         echo "  KAFKA_CLUSTER_NAME       Kafka cluster name (default: cost-onprem-kafka)"
         echo "  KAFKA_VERSION            Kafka version (default: 4.1.0)"
         echo "  AMQ_STREAMS_CHANNEL      OLM subscription channel (default: amq-streams-3.1.x)"
-        echo "  KAFKA_ENVIRONMENT        Environment type: dev or ocp (default: dev)"
         echo "  STORAGE_CLASS            Storage class name (auto-detected if empty)"
+        echo "  KAFKA_BROKER_REPLICAS    Number of broker nodes (default: 3)"
+        echo "  KAFKA_BROKER_STORAGE     Broker persistent volume size (default: 100Gi)"
+        echo "  KAFKA_CONTROLLER_REPLICAS Number of controller nodes (default: 3)"
+        echo "  KAFKA_CONTROLLER_STORAGE Controller persistent volume size (default: 20Gi)"
         echo ""
         echo "Examples:"
-        echo "  # Deploy with default settings"
+        echo "  # Deploy with default settings (3 brokers, 3 controllers)"
         echo "  $0"
         echo ""
-        echo "  # Deploy for OpenShift with custom storage"
-        echo "  KAFKA_ENVIRONMENT=ocp STORAGE_CLASS=gp2 $0"
+        echo "  # Deploy with custom storage class"
+        echo "  STORAGE_CLASS=gp2 $0"
         echo ""
         echo "  # Deploy into a specific namespace"
         echo "  KAFKA_NAMESPACE=my-kafka $0"

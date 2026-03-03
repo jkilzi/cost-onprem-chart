@@ -396,7 +396,6 @@ deploy_kafka() {
 
     # Export environment variables for AMQ Streams script
     # export KAFKA_NAMESPACE="${NAMESPACE}"
-    export KAFKA_ENVIRONMENT="ocp"
     export STORAGE_CLASS="${STORAGE_CLASS:-}"
 
     log_verbose "Using storage class: ${STORAGE_CLASS}"

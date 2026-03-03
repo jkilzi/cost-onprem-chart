@@ -163,8 +163,8 @@ Deploy AMQ Streams (Streams for Apache Kafka) operator via OLM and a KRaft-based
 # Basic deployment
 ./deploy-kafka.sh
 
-# Deploy for OpenShift with custom storage
-KAFKA_ENVIRONMENT=ocp ./deploy-kafka.sh
+# Deploy with custom storage class
+STORAGE_CLASS=gp2 ./deploy-kafka.sh
 
 # Deploy into a specific namespace
 KAFKA_NAMESPACE=my-kafka ./deploy-kafka.sh
@@ -184,8 +184,11 @@ KAFKA_BOOTSTRAP_SERVERS=my-kafka:9092 ./deploy-kafka.sh
 - `KAFKA_CLUSTER_NAME`: Kafka cluster name (default: `cost-onprem-kafka`)
 - `KAFKA_VERSION`: Kafka version (default: `4.1.0`)
 - `AMQ_STREAMS_CHANNEL`: OLM subscription channel (default: `amq-streams-3.1.x`)
-- `KAFKA_ENVIRONMENT`: Environment type - `dev` or `ocp` (default: `dev`)
 - `STORAGE_CLASS`: Storage class name (auto-detected if empty)
+- `KAFKA_BROKER_REPLICAS`: Number of broker nodes (default: `3`)
+- `KAFKA_BROKER_STORAGE`: Broker persistent volume size (default: `100Gi`)
+- `KAFKA_CONTROLLER_REPLICAS`: Number of controller nodes (default: `3`)
+- `KAFKA_CONTROLLER_STORAGE`: Controller persistent volume size (default: `20Gi`)
 - `KAFKA_BOOTSTRAP_SERVERS`: Use external Kafka (skips deployment)
 
 ---

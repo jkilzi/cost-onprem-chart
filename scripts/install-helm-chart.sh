@@ -1723,8 +1723,6 @@ set_platform_config() {
     else
         echo_info "Using custom values file: $VALUES_FILE"
     fi
-
-    export KAFKA_ENVIRONMENT="ocp"
 }
 
 # Main execution
