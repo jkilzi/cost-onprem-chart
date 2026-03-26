@@ -383,6 +383,63 @@ extract_cluster_config() {
     export DYNACONF_ONPREM_MASU_PORT=""
     export DYNACONF_ONPREM_MASU_SCHEME="https"
     
+    # S3/object storage configuration (used by cost_minio_settings fixture for ROS tests).
+    # Fetch all needed env vars from masu in a single kubectl exec to avoid repeated pod calls.
+    local masu_deploy="deploy/${HELM_RELEASE_NAME}-koku-masu"
+    local masu_env
+    masu_env=$(kubectl exec -n "$NAMESPACE" "$masu_deploy" -c masu -- env 2>/dev/null \
+        | grep -E '^(S3_ENDPOINT|REQUESTED_BUCKET|REQUESTED_ROS_BUCKET)=' || true)
+
+    local s3_internal_endpoint
+    s3_internal_endpoint=$(echo "$masu_env" | grep '^S3_ENDPOINT=' | cut -d= -f2- || true)
+    export S3_KOKU_BUCKET
+    S3_KOKU_BUCKET=$(echo "$masu_env" | grep '^REQUESTED_BUCKET=' | cut -d= -f2-)
+    S3_KOKU_BUCKET="${S3_KOKU_BUCKET:-koku-bucket}"
+    export S3_ROS_BUCKET
+    S3_ROS_BUCKET=$(echo "$masu_env" | grep '^REQUESTED_ROS_BUCKET=' | cut -d= -f2-)
+    S3_ROS_BUCKET="${S3_ROS_BUCKET:-ros-data}"
+    export S3_SECRET_NAME="${HELM_RELEASE_NAME}-storage-credentials"
+
+    # The masu pod uses in-cluster DNS (e.g. https://s3.openshift-storage.svc).
+    # For local runs we need the external route instead.
+    if [[ "$s3_internal_endpoint" =~ \.svc(/|$|:) ]] || [[ "$s3_internal_endpoint" =~ \.svc\.cluster ]]; then
+        local s3_host s3_svc_name s3_ns s3_route_host
+        s3_host=$(echo "$s3_internal_endpoint" | sed -E 's|https?://||; s|[:/].*||')
+        s3_svc_name="${s3_host%%.*}"
+        s3_ns="${s3_host#*.}"
+        s3_ns="${s3_ns%.svc*}"
+
+        s3_route_host=$(kubectl get route "$s3_svc_name" -n "$s3_ns" \
+            -o jsonpath='{.spec.host}' 2>/dev/null || echo "")
+        if [ -n "$s3_route_host" ]; then
+            export S3_ENDPOINT="https://$s3_route_host"
+            log_verbose "  S3: resolved in-cluster $s3_internal_endpoint → external $S3_ENDPOINT"
+        else
+            export S3_ENDPOINT="$s3_internal_endpoint"
+            log "WARNING: S3 endpoint $s3_internal_endpoint is in-cluster but no external route found"
+        fi
+    else
+        export S3_ENDPOINT="$s3_internal_endpoint"
+    fi
+
+    if [[ "$S3_ENDPOINT" =~ ^http:// ]]; then
+        export S3_USE_SSL="false"
+    else
+        export S3_USE_SSL="true"
+    fi
+    if [[ "$S3_ENDPOINT" =~ :([0-9]+)/?$ ]]; then
+        export S3_PORT="${BASH_REMATCH[1]}"
+    else
+        export S3_PORT="443"
+    fi
+
+    if [ -n "$S3_ENDPOINT" ]; then
+        log "  S3: ${S3_ENDPOINT} (buckets: koku=${S3_KOKU_BUCKET}, ros=${S3_ROS_BUCKET})"
+    else
+        log "WARNING: S3_ENDPOINT not found on MASU deployment — ROS tests will skip S3 operations"
+    fi
+
+    
     # Direct target values - bypass Jinja templates that don't evaluate correctly
     # These match what the containerized tests use in run-iqe-tests.sh
     export DYNACONF_MAIN__HOSTNAME="$DYNACONF_ONPREM_KOKU_HOSTNAME"
@@ -423,12 +480,16 @@ extract_cluster_config() {
         log "  DYNACONF_ONPREM_KOKU_HOSTNAME: $DYNACONF_ONPREM_KOKU_HOSTNAME"
         log "  DYNACONF_ONPREM_OAUTH_URL: $DYNACONF_ONPREM_OAUTH_URL"
         log "  DYNACONF_ONPREM_MASU_HOSTNAME: $DYNACONF_ONPREM_MASU_HOSTNAME"
+        log "  S3_ENDPOINT: ${S3_ENDPOINT:-<not set>}"
+        log "  S3_KOKU_BUCKET: ${S3_KOKU_BUCKET:-<not set>}"
+        log "  S3_ROS_BUCKET: ${S3_ROS_BUCKET:-<not set>}"
     fi
     
     log "✓ Cluster configuration extracted"
     log "  - Koku API: https://$DYNACONF_ONPREM_KOKU_HOSTNAME"
     log "  - Keycloak: $DYNACONF_ONPREM_OAUTH_URL"
     log "  - Masu: https://$DYNACONF_ONPREM_MASU_HOSTNAME (via route)"
+    log "  - S3: ${S3_ENDPOINT:-<not configured>} (ros=${S3_ROS_BUCKET:-n/a})"
 }
 
 # =============================================================================
