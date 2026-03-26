@@ -583,7 +583,7 @@ install_operator() {
     fi
 
     # Check if operator is already installed
-    if oc get subscription costmanagement-metrics-operator -n "$NAMESPACE" &> /dev/null; then
+    if oc get subscriptions.operators.coreos.com costmanagement-metrics-operator -n "$NAMESPACE" &> /dev/null; then
         print_success "Cost Management Metrics Operator already installed"
         return 0
     fi
