@@ -10,10 +10,10 @@ In disconnected environments, clusters have no direct internet access. The `oc-m
 > `oc-mirror` (for example, images referenced only in Helm hooks such as
 > `pre-install`/`pre-upgrade`). Those **must** be listed explicitly in the
 > `additionalImages` section of the `ImageSetConfiguration`. Use
-> [Discovering container images](#discovering-container-images) to generate
-> the current list from your chart revision, and see
-> [Step 1](#step-1-create-imagesetconfiguration) for a minimal configuration
-> example.
+> [Discovering container images](#discovering-container-images) to list images
+> from an `oc-mirror` dry-run (`mapping.txt`), and see
+> [Step 1](#step-1-create-imagesetconfiguration) for the reusable example
+> files.
 
 ## Prerequisites
 
@@ -25,8 +25,9 @@ In disconnected environments, clusters have no direct internet access. The `oc-m
 ## Discovering container images
 
 Image tags and repositories change with chart releases. Instead of copying a
-static list into this document, generate the set you need from the chart and
-from `oc-mirror` before each mirror run.
+static list into this document, run `oc-mirror` in dry-run and read
+`mapping.txt` before each mirror run to capture the exact image set for your
+`ImageSetConfiguration`.
 
 **Auto-discovered:** Any image that appears in the manifests `oc-mirror`
 renders from the Helm chart (it runs `helm template` internally) is mirrored
@@ -44,20 +45,6 @@ one-shot S3 bucket creation. That image is not part of the Helm chart; add it
 to `additionalImages` only if you use that script path, or set `S3_CLI_IMAGE` to
 a mirrored image, or use `SKIP_S3_SETUP=true` / manual bucket creation.
 
-### List images from `helm template` (chart defaults)
-
-Use the same inputs `oc-mirror` uses for discovery: render with **no** `--set`
-flags so defaults match offline discovery.
-
-```bash
-cd /path/to/cost-onprem-chart/cost-onprem
-
-helm template cost-onprem . > /tmp/cost-onprem-rendered.yaml
-
-awk -F': ' '/^[[:space:]]+image:/{gsub(/"/,"",$2); print $2}' \
-  /tmp/cost-onprem-rendered.yaml | sort -u
-```
-
 ### List images from an `oc-mirror` plan (`mapping.txt`)
 
 Run `oc-mirror` in dry-run mode with the same `ImageSetConfiguration` you will
@@ -66,27 +53,16 @@ use for mirroring (Helm section plus `additionalImages`). The tool writes a
 the plan.
 
 The project CI uses a throwaway registry only as a destination for planning; you
-can mirror the same way. Example:
+can mirror the same way. Example using the repository example
+[`imageset-config-cost-onprem.yaml`](../examples/disconnected/imageset-config-cost-onprem.yaml):
 
 ```bash
-# Example: local chart path (adjust to your layout).
-cat > /tmp/imageset-config.yaml <<'EOF'
-apiVersion: mirror.openshift.io/v2alpha1
-kind: ImageSetConfiguration
-mirror:
-  helm:
-    local:
-      - name: cost-onprem
-        path: /path/to/cost-onprem-chart/cost-onprem
-  additionalImages:
-    # Copy from .github/workflows/lint-and-validate.yml for hook-only images.
-    - name: quay.io/insights-onprem/postgresql:16
-EOF
+cd /path/to/cost-onprem-chart
 
 # Local registry as dry-run destination (same pattern as CI; stop/remove when done).
 podman run -d --name oc-mirror-registry -p 5050:5000 docker.io/library/registry:2
 
-oc-mirror --v2 --config /tmp/imageset-config.yaml \
+oc-mirror --v2 --config docs/examples/disconnected/imageset-config-cost-onprem.yaml \
   --workspace file:///tmp/oc-mirror-workspace \
   docker://localhost:5050 --dry-run --dest-tls-verify=false
 
@@ -94,39 +70,42 @@ MAPPING="$(find /tmp/oc-mirror-workspace -name mapping.txt -type f | head -1)"
 cut -d= -f1 "$MAPPING" | sed 's|docker://||' | sort -u
 ```
 
-For mirroring from the published Helm repo instead of a local path, use
-`mirror.helm.repositories` as in [Step 1](#step-1-create-imagesetconfiguration)
-and the same `oc-mirror` / `find` / `cut` sequence with your workspace path.
+To dry-run against a **local** chart directory, copy the example file and swap
+`mirror.helm` to `mirror.helm.local` as described in the comments at the top of
+that YAML, then pass your edited file to `--config`.
 
-> **Why hooks matter:** `oc-mirror` discovers images by rendering the chart the
-> same way Helm does for that pass. Anything not included there must appear in
-> `additionalImages`. CI verifies that every image in `helm template` output is
-> covered by the mirror plan; see `.github/workflows/lint-and-validate.yml`.
+For mirroring operator prerequisites (AMQ Streams, RHBK, optional ODF), start
+from
+[`imageset-config-cost-onprem-with-prerequisites.sample.yaml`](../examples/disconnected/imageset-config-cost-onprem-with-prerequisites.sample.yaml)
+instead.
+
+> **Why hooks matter:** `oc-mirror` discovers images by rendering the chart
+> internally. Anything not included in that pass must appear in
+> `additionalImages`. CI enforces that the full chart image set is covered by
+> the mirror plan; see `.github/workflows/lint-and-validate.yml`.
 
 ## Step 1: Create ImageSetConfiguration
 
-Create a file named `imageset-config.yaml`. The `additionalImages` section
-lists images that `oc-mirror` cannot discover from the Helm chart
-automatically (see [Discovering container images](#discovering-container-images)).
+Reuse the example files under `docs/examples/disconnected/` (copy and edit as
+needed):
 
-```yaml
-apiVersion: mirror.openshift.io/v2alpha1
-kind: ImageSetConfiguration
-mirror:
-  helm:
-    repositories:
-      - name: cost-onprem
-        url: https://insights-onprem.github.io/cost-onprem-chart
-        charts:
-          - name: cost-onprem
-            version: "0.2.10"
-  # Images that oc-mirror cannot auto-discover from the Helm chart.
-  # Align with .github/workflows/lint-and-validate.yml additionalImages.
-  additionalImages:
-    - name: registry.redhat.io/rhel10/postgresql-16:10.1
-    # Only needed if using install-helm-chart.sh for bucket creation:
-    - name: amazon/aws-cli:latest
-```
+| File | Purpose |
+|------|---------|
+| [`imageset-config-cost-onprem.yaml`](../examples/disconnected/imageset-config-cost-onprem.yaml) | cost-onprem Helm chart + `additionalImages` for hooks and optional `install-helm-chart.sh` S3 setup |
+| [`imageset-config-cost-onprem-with-prerequisites.sample.yaml`](../examples/disconnected/imageset-config-cost-onprem-with-prerequisites.sample.yaml) | Same as above plus **OLM** packages for **AMQ Streams** and **RHBK** (`deploy-kafka.sh`, `deploy-rhbk.sh`), `registry.redhat.io/rhel9/postgresql-15` used by `deploy-rhbk.sh`, and **ODF** optional lines commented |
+
+In both files, set `mirror.helm.repositories[].charts[].version` to the chart
+release you mirror and install. The `additionalImages` section lists images that
+`oc-mirror` cannot discover from the Helm chart automatically (see
+[Discovering container images](#discovering-container-images)); keep it aligned
+with `.github/workflows/lint-and-validate.yml`.
+
+For the prerequisites sample, set `mirror.operators[].catalog` to
+`registry.redhat.io/redhat/redhat-operator-index:vX.Y` matching your OpenShift
+minor version, and adjust operator package channels if your release differs.
+
+Copy one of the examples to `imageset-config.yaml` (or keep any path you
+prefer and pass it to `oc-mirror -c`).
 
 ## Step 2: Mirror to Disk
 
@@ -170,9 +149,9 @@ This configures the cluster to pull images from the mirror registry instead of t
 Install the chart from the mirrored registry. Use the install script with the local chart:
 
 ```bash
-# Option A: Use the mirrored chart directly
+# Option A: Use the mirrored chart directly (--version must match mirrored chart)
 helm install cost-onprem oci://mirror.example.com:5000/cost-onprem/cost-onprem \
-  --version 0.2.10 \
+  --version 0.2.20-rc3 \
   --namespace cost-onprem \
   --create-namespace
 
@@ -203,13 +182,13 @@ When new versions are released, bump the chart version in
 mirror process (Steps 2-5). The install script supports version pinning:
 
 ```bash
-CHART_VERSION=0.2.10 ./scripts/install-helm-chart.sh
+CHART_VERSION=0.2.20-rc3 ./scripts/install-helm-chart.sh
 ```
 
-> **Remember:** If `helm template` shows an image that your dry-run
-> `mapping.txt` does not, add it to `additionalImages` (and update CI’s list in
+> **Remember:** If an image your cluster needs is missing from dry-run
+> `mapping.txt`, add it to `additionalImages` (and update CI’s list in
 > `.github/workflows/lint-and-validate.yml` when contributing upstream). CI
-> fails when `helm template` images are not fully covered by `oc-mirror`.
+> fails when chart-rendered images are not fully covered by `oc-mirror`.
 
 ## References
 

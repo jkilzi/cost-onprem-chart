@@ -141,7 +141,7 @@ jobs:
           done
           echo ""
           echo "  2. See docs/operations/disconnected-deployment.md for commands"
-          echo "     to list images (helm template / oc-mirror mapping.txt)."
+          echo "     to list images from oc-mirror (dry-run mapping.txt)."
           echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
           exit 1
         fi
