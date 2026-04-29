@@ -9,11 +9,11 @@ In disconnected environments, clusters have no direct internet access. The `oc-m
 > **Important:** Some images used by the chart cannot be auto-discovered by
 > `oc-mirror` (for example, images referenced only in Helm hooks such as
 > `pre-install`/`pre-upgrade`). Those **must** be listed explicitly in the
-> `additionalImages` section of the `ImageSetConfiguration`. Use
-> [Discovering container images](#discovering-container-images) to list images
-> from an `oc-mirror` dry-run (`mapping.txt`), and see
-> [Step 1](#step-1-create-imagesetconfiguration) for the reusable example
-> files.
+> `additionalImages` section of the `ImageSetConfiguration`. See
+> [Discovering container images](#discovering-container-images) for details on
+> image discovery and [Step 1](#step-1-create-imagesetconfiguration) for
+> ready-to-use example files with the correct `additionalImages` already
+> included.
 
 ## Prerequisites
 
@@ -25,9 +25,9 @@ In disconnected environments, clusters have no direct internet access. The `oc-m
 ## Discovering container images
 
 Image tags and repositories change with chart releases. Instead of copying a
-static list into this document, run `oc-mirror` in dry-run and read
-`mapping.txt` before each mirror run to capture the exact image set for your
-`ImageSetConfiguration`.
+static list into this document, use the provided example `ImageSetConfiguration`
+files with the correct `additionalImages` already included. The examples are
+kept aligned with CI validation to ensure complete image coverage.
 
 **Auto-discovered:** Any image that appears in the manifests `oc-mirror`
 renders from the Helm chart (it runs `helm template` internally) is mirrored
@@ -188,10 +188,11 @@ mirror process (Steps 2-5). The install script supports version pinning:
 CHART_VERSION=0.2.20-rc3 ./scripts/install-helm-chart.sh
 ```
 
-> **Remember:** If an image your cluster needs is missing from dry-run
-> `mapping.txt`, add it to `additionalImages` (and update CI’s list in
-> `.github/workflows/lint-and-validate.yml` when contributing upstream). CI
-> fails when chart-rendered images are not fully covered by `oc-mirror`.
+> **Remember:** Use the provided example `ImageSetConfiguration` files which
+> already include the correct `additionalImages` for hook-only containers. If
+> contributing upstream, keep `.github/workflows/lint-and-validate.yml`
+> `additionalImages` aligned with the example files. CI validates that all
+> chart images are covered by the mirror plan.
 
 ## References
 
